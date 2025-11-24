@@ -250,8 +250,9 @@ EOF
 EOF
 
     # Restart auditd
-    service auditd restart || error_exit "Failed to restart auditd"
-    
+    systemctl restart auditd || error_exit "Failed to restart auditd"
+    systemctl enable auditd
+
     # Load new rules
     augenrules --load || print_message "$YELLOW" "WARNING: Failed to load audit rules"
 }
@@ -273,10 +274,10 @@ configure_apparmor() {
 # Function to configure ClamAV
 configure_clamav() {
     print_message "$GREEN" "Configuring ClamAV..."
-    
+
     # Stop services before configuration
-    systemctl stop clamav-freshclam
-    systemctl stop clamav-daemon
+    systemctl stop clamav-freshclam 2>/dev/null || true
+    systemctl stop clamav-daemon 2>/dev/null || true
     
     # Update virus database
     print_message "$GREEN" "Updating ClamAV virus database..."
@@ -363,7 +364,13 @@ EOF
 # Function to configure UFW firewall
 configure_ufw() {
     print_message "$GREEN" "Configuring UFW firewall..."
-    
+
+    # Ensure UFW is installed
+    if ! command -v ufw &> /dev/null; then
+        print_message "$YELLOW" "UFW not found. Installing UFW..."
+        DEBIAN_FRONTEND=noninteractive apt-get install -y ufw || error_exit "Failed to install UFW"
+    fi
+
     # Set defaults
     ufw --force reset
     ufw default deny incoming
@@ -375,10 +382,27 @@ configure_ufw() {
     
     # Enable logging
     ufw logging on
-    
+
+    # Configure UFW log rotation
+    cat > /etc/logrotate.d/ufw << 'EOF'
+/var/log/ufw.log {
+    daily
+    rotate 7
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0640 root adm
+    sharedscripts
+    postrotate
+        systemctl reload rsyslog > /dev/null 2>&1 || true
+    endscript
+}
+EOF
+
     # Enable firewall
     echo "y" | ufw enable
-    
+
     print_message "$GREEN" "UFW firewall configured and enabled"
     print_message "$YELLOW" "WARNING: Only SSH is allowed. Configure additional rules as needed."
 }
@@ -424,9 +448,12 @@ EOF
 # Function to harden SSH configuration
 harden_ssh() {
     print_message "$GREEN" "Hardening SSH configuration..."
-    
+
     backup_file "/etc/ssh/sshd_config"
-    
+
+    # Create SSH config directory if it doesn't exist (for Ubuntu 18.04/20.04 compatibility)
+    mkdir -p /etc/ssh/sshd_config.d/
+
     # Create hardened SSH config
     cat > /etc/ssh/sshd_config.d/99-hardening.conf << 'EOF'
 # SSH Hardening Configuration
@@ -764,13 +791,13 @@ post_hardening_checks() {
 
 # Main function
 main() {
-    print_message "$GREEN" "=== Ubuntu Security Hardening Script ==="
-    print_message "$GREEN" "Version: 2.0"
-    print_message "$GREEN" "======================================="
-    
     # Preliminary checks
     check_root
     setup_directories
+
+    print_message "$GREEN" "=== Ubuntu Security Hardening Script ==="
+    print_message "$GREEN" "Version: 2.0"
+    print_message "$GREEN" "======================================="
     check_ubuntu_version
     
     # Create initial checkpoint
