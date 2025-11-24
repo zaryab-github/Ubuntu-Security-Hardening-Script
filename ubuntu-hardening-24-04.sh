@@ -214,8 +214,7 @@ install_packages() {
         # Firewall
         "ufw"
         "gufw"
-        "iptables-persistent"
-        
+
         # Intrusion detection/prevention
         "fail2ban"
         "fail2ban-systemd"
@@ -663,6 +662,9 @@ EOF
         monthly)
             timer_schedule="monthly"
             ;;
+        *)
+            timer_schedule="weekly"
+            ;;
     esac
     
     cat > /etc/systemd/system/clamav-scan.timer << EOF
@@ -752,7 +754,7 @@ EOF
     # Enable update-notifier for desktop systems
     if dpkg -l | grep -q "update-notifier"; then
         cat > /etc/apt/apt.conf.d/99update-notifier << 'EOF'
-DPkg::Post-Invoke {"if [ -d /var/lib/update-notifier ]; then touch /var/lib/update-notifier/dpkg-run-stamp; fi; };";
+DPkg::Post-Invoke { "if [ -d /var/lib/update-notifier ]; then touch /var/lib/update-notifier/dpkg-run-stamp; fi"; };
 EOF
     fi
     
@@ -773,7 +775,13 @@ EOF
 # Function to configure UFW with Ubuntu 24.04 enhancements
 configure_ufw() {
     print_message "$GREEN" "Configuring UFW firewall with IPv6 support..."
-    
+
+    # Ensure UFW is installed
+    if ! command -v ufw &> /dev/null; then
+        print_message "$YELLOW" "UFW not found. Installing UFW..."
+        DEBIAN_FRONTEND=noninteractive apt-get install -y ufw || error_exit "Failed to install UFW"
+    fi
+
     backup_file "/etc/default/ufw"
     
     # Enable IPv6 support
@@ -1305,6 +1313,9 @@ EOF
         monthly)
             timer_schedule="monthly"
             ;;
+        *)
+            timer_schedule="weekly"
+            ;;
     esac
     
     cat > /etc/systemd/system/openscap-scan.timer << EOF
@@ -1640,14 +1651,14 @@ final_system_checks() {
 
 # Main function
 main() {
+    # Pre-flight checks
+    check_root
+    setup_directories
+
     print_message "$GREEN" "╔══════════════════════════════════════════════════════╗"
     print_message "$GREEN" "║     Ubuntu 24.04 LTS Security Hardening Script       ║"
     print_message "$GREEN" "║                   Version $SCRIPT_VERSION                        ║"
     print_message "$GREEN" "╚══════════════════════════════════════════════════════╝"
-    
-    # Pre-flight checks
-    check_root
-    setup_directories
     check_ubuntu_version
     check_system_requirements
     
