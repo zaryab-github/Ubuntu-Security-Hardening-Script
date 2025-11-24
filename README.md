@@ -569,7 +569,7 @@ These scripts are provided "AS IS" without warranty of any kind, express or impl
 
 ---
 
-**Version**: 4.0 | **Last Updated**: November 2024 | **Maintained**: Yes ✅
+**Version**: 4.0 | **Last Updated**: November 2025 | **Maintained**: Yes ✅
 
 **Tested On**: Ubuntu 18.04, 20.04, 22.04, 24.04, 25.04, 25.10
 
