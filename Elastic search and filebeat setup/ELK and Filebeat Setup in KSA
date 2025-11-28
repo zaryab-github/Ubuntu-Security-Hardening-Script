@@ -1,0 +1,31 @@
+
+Filebeat Setup in KSA:
+
+##### --------------- Filebeat Installation and Configs --------------- #####
+
+🔹 1. Download Filebeat 8.18.3 .deb Package
+    cd /tmp
+    wget https://artifacts.elastic.co/downloads/beats/filebeat/filebeat-8.18.3-amd64.deb
+
+🔹 2. Install the Package
+    sudo dpkg -i filebeat-8.18.3-amd64.deb
+    sudo apt-get install -f
+
+🔹 3. Enable Filebeat to Start on Boot
+    sudo systemctl enable filebeat
+    systemctl start filebeat
+    systemctl status filebeat
+    journalctl -u filebeat -f
+
+now config filebeat.yml as per your requirement.
+
+
+root@ksa-processing-pr:/tmp# filebeat version
+# Output: filebeat version 8.18.3 (amd64) ...
+filebeat version 8.18.3 (amd64), libbeat 8.18.3 [ff779cdef575eea9e0b596a46e7182737805c2eb built 2025-06-18 17:02:15 +0000 UTC]
+
+
+
+
+##### --------------- ELK Installation and Configs --------------- #####
+
