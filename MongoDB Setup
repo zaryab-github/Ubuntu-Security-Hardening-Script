@@ -1,0 +1,332 @@
+
+###### ----------------- Installing MongoDB Community Edition ----------------- ######
+
+- Install MongoDB Community Edition:
+    https://www.mongodb.com/docs/manual/tutorial/install-mongodb-on-ubuntu/
+
+
+Follow these steps to install MongoDB Community Edition using the apt package manager.
+
+1. Import the public key.
+From a terminal, install gnupg and curl if they are not already available:
+    sudo apt-get install gnupg curl
+
+To import the MongoDB public GPG key, run the following command:
+    curl -fsSL https://www.mongodb.org/static/pgp/server-8.0.asc | \
+    sudo gpg -o /usr/share/keyrings/mongodb-server-8.0.gpg \
+    --dearmor
+
+2. Create the list file.
+Create the list file "/etc/apt/sources.list.d/mongodb-org-8.0.list" for your version of Ubuntu.
+    echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/8.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-8.0.list
+
+3. Reload the package database.
+Issue the following command to reload the local package database:
+    sudo apt-get update
+
+4. Install MongoDB Community Server.
+You can install either the latest stable version of MongoDB or a specific version of MongoDB.
+
+- For Latest Release:
+    sudo apt-get install -y mongodb-org
+
+- For Specific Release:
+To install a specific release, you must specify each component package individually along with the version number.
+    sudo apt-get install -y \
+    mongodb-org=8.0.12 \
+    mongodb-org-database=8.0.12 \
+    mongodb-org-server=8.0.12 \
+    mongodb-mongosh \
+    mongodb-org-shell=8.0.12 \
+    mongodb-org-mongos=8.0.12 \
+    mongodb-org-tools=8.0.12 \
+    mongodb-org-database-tools-extra=8.0.12
+
+
+5. Run MongoDB.
+    sudo systemctl start mongod
+    sudo systemctl daemon-reload
+    sudo systemctl enable mongod
+    sudo systemctl status mongod
+    sudo systemctl stop mongod
+    sudo systemctl restart mongod
+
+6. Login to Mongo shell
+    mongosh
+
+
+
+###### ----------------- MongoDB Community Edition  Directory Structure ----------------- ######
+
+- Data directory:
+    /var/lib/mongodb
+- Log Directory
+    /var/log/mongodb
+- Configuration file 
+    /etc/mongod.conf
+
+
+
+
+###### ----------------- Setup MongoDB Replica Sets for Production ----------------- ######
+
+
+1. Hostname Setup on All MpngoDB Replica VMs 
+
+- First setp Hostname for Machines:
+## On Machine 1 (192.168.115.155)
+    sudo nano /etc/hostname
+    127.0.1.1 mongo-db-1
+## On Machine 2 (192.168.115.157)
+    sudo nano /etc/hostname
+    127.0.1.1 mongo-db-2
+## On Machine 3 (192.168.115.158)
+    sudo nano /etc/hostname
+    127.0.1.1 mongo-db-3
+
+
+2. Now add the "/etc/hosts" entries for hostname resoultion of other mongo-db. (Done on all VMs)
+
+192.168.115.155 mongo-db-1
+192.168.115.157 mongo-db-2
+192.168.115.158 mongo-db-3
+
+
+3. Generate keyFile
+
+- The exact same file must exist on all members (not regenerated separately).
+- Generate once on the first server (mngo-db-1):
+    mkdir -p /etc/mongodb/keys/
+    openssl rand -base64 756 > /etc/mongodb/keys/mongo-key
+    chown mongodb:mongodb /etc/mongodb/keys/mongo-key
+    chmod 600 /etc/mongodb/keys/mongo-key
+
+
+- Then securely copy it to the other servers:
+    scp /etc/mongodb/keys/mongo-key user@mongo.replset-1:/etc/mongodb/keys/mongo-key
+    scp /etc/mongodb/keys/mongo-key user@mongo.replset-2:/etc/mongodb/keys/mongo-key
+
+
+3. Configure Config file (/etc/mongod.conf)
+
+- Done below config on all servers of MongoDB.
+---
+storage:
+  dbPath: /var/lib/mongodb
+
+systemLog:
+  destination: file
+  logAppend: true
+  path: /var/log/mongodb/mongod.log
+
+net:
+  port: 27017
+  bindIp: 0.0.0.0
+
+processManagement:
+  timeZoneInfo: /usr/share/zoneinfo
+
+#security:
+#  authorization: enabled
+#  keyFile: /etc/mongodb/keys/mongo-key
+
+replication:
+  replSetName: "rs0"
+---
+
+- now rstart service on all vms:
+    service mongod restart
+    service mongod status
+
+Configs Done.
+
+
+4. Initiate Replication
+
+- To login the CLI, run below on Mongo primary server:    
+    mongosh (or) mongosh --host mongo-db-1:27017
+- To inistiate the replication
+    rs.initiate()
+than add memebrs manually (or) run below
+    rs.initiate({
+    _id: "rs0",
+    members: [
+        { _id: 0, host: "mongo-db-1:27017" },
+        { _id: 1, host: "mongo-db-2:27017" },
+        { _id: 2, host: "mongo-db-3:27017" }
+    ]
+    })
+
+if above giveerror when adding memebers, run below to add them one by one:
+    rs.add("mongo-db-2:27017")
+    rs.add("mongo-db-3:27017")
+
+
+- check status
+    rs.status()
+
+- you should see the output details:
+    mongo-db-1:27017 → PRIMARY
+    mongo-db-2:27017, mongo-db-3:27017 → SECONDARY
+
+Actual Output:
+---
+<!-- rs0 [direct: primary] test> rs.status()
+{
+  set: 'rs0',
+  date: ISODate('2025-09-05T07:58:19.954Z'),
+  myState: 1,
+  term: Long('2'),
+  syncSourceHost: '',
+  syncSourceId: -1,
+  heartbeatIntervalMillis: Long('2000'),
+  majorityVoteCount: 2,
+  writeMajorityCount: 2,
+  votingMembersCount: 3,
+  writableVotingMembersCount: 3,
+  optimes: {
+    lastCommittedOpTime: { ts: Timestamp({ t: 1757059083, i: 1 }), t: Long('2') },
+    lastCommittedWallTime: ISODate('2025-09-05T07:58:03.451Z'),
+    readConcernMajorityOpTime: { ts: Timestamp({ t: 1757059083, i: 1 }), t: Long('2') },
+    appliedOpTime: { ts: Timestamp({ t: 1757059083, i: 1 }), t: Long('2') },
+    durableOpTime: { ts: Timestamp({ t: 1757059083, i: 1 }), t: Long('2') },
+    writtenOpTime: { ts: Timestamp({ t: 1757059083, i: 1 }), t: Long('2') },
+    lastAppliedWallTime: ISODate('2025-09-05T07:58:03.451Z'),
+    lastDurableWallTime: ISODate('2025-09-05T07:58:03.451Z'),
+    lastWrittenWallTime: ISODate('2025-09-05T07:58:03.451Z')
+  },
+  lastStableRecoveryTimestamp: Timestamp({ t: 1757059052, i: 1 }),
+  electionCandidateMetrics: {
+    lastElectionReason: 'electionTimeout',
+    lastElectionDate: ISODate('2025-09-05T07:55:42.091Z'),
+    electionTerm: Long('2'),
+    lastCommittedOpTimeAtElection: { ts: Timestamp({ t: 0, i: 0 }), t: Long('-1') },
+    lastSeenWrittenOpTimeAtElection: { ts: Timestamp({ t: 1757058934, i: 1 }), t: Long('1') },
+    lastSeenOpTimeAtElection: { ts: Timestamp({ t: 1757058934, i: 1 }), t: Long('1') },
+    numVotesNeeded: 1,
+    priorityAtElection: 1,
+    electionTimeoutMillis: Long('10000'),
+    newTermStartDate: ISODate('2025-09-05T07:55:42.097Z'),
+    wMajorityWriteAvailabilityDate: ISODate('2025-09-05T07:55:42.197Z')
+  },
+  members: [
+    {
+      _id: 0,
+      name: 'mongo-db-1:27017',
+      health: 1,
+      state: 1,
+      stateStr: 'PRIMARY',
+      uptime: 159,
+      optime: { ts: Timestamp({ t: 1757059083, i: 1 }), t: Long('2') },
+      optimeDate: ISODate('2025-09-05T07:58:03.000Z'),
+      optimeWritten: { ts: Timestamp({ t: 1757059083, i: 1 }), t: Long('2') },
+      optimeWrittenDate: ISODate('2025-09-05T07:58:03.000Z'),
+      lastAppliedWallTime: ISODate('2025-09-05T07:58:03.451Z'),
+      lastDurableWallTime: ISODate('2025-09-05T07:58:03.451Z'),
+      lastWrittenWallTime: ISODate('2025-09-05T07:58:03.451Z'),
+      syncSourceHost: '',
+      syncSourceId: -1,
+      infoMessage: '',
+      electionTime: Timestamp({ t: 1757058942, i: 1 }),
+      electionDate: ISODate('2025-09-05T07:55:42.000Z'),
+      configVersion: 12951,
+      configTerm: 2,
+      self: true,
+      lastHeartbeatMessage: ''
+    },
+    {
+      _id: 1,
+      name: 'mongo-db-2:27017',
+      health: 1,
+      state: 2,
+      stateStr: 'SECONDARY',
+      uptime: 20,
+      optime: { ts: Timestamp({ t: 1757059083, i: 1 }), t: Long('2') },
+      optimeDurable: { ts: Timestamp({ t: 1757059083, i: 1 }), t: Long('2') },
+      optimeWritten: { ts: Timestamp({ t: 1757059083, i: 1 }), t: Long('2') },
+      optimeDate: ISODate('2025-09-05T07:58:03.000Z'),
+      optimeDurableDate: ISODate('2025-09-05T07:58:03.000Z'),
+      optimeWrittenDate: ISODate('2025-09-05T07:58:03.000Z'),
+      lastAppliedWallTime: ISODate('2025-09-05T07:58:03.451Z'),
+      lastDurableWallTime: ISODate('2025-09-05T07:58:03.451Z'),
+      lastWrittenWallTime: ISODate('2025-09-05T07:58:03.451Z'),
+      lastHeartbeat: ISODate('2025-09-05T07:58:19.494Z'),
+      lastHeartbeatRecv: ISODate('2025-09-05T07:58:19.494Z'),
+      pingMs: Long('1'),
+      lastHeartbeatMessage: '',
+      syncSourceHost: 'mongo-db-1:27017',
+      syncSourceId: 0,
+      infoMessage: '',
+      configVersion: 12951,
+      configTerm: 2
+    },
+    {
+      _id: 2,
+      name: 'mongo-db-3:27017',
+      health: 1,
+      state: 2,
+      stateStr: 'SECONDARY',
+      uptime: 20,
+      optime: { ts: Timestamp({ t: 1757059083, i: 1 }), t: Long('2') },
+      optimeDurable: { ts: Timestamp({ t: 1757059083, i: 1 }), t: Long('2') },
+      optimeWritten: { ts: Timestamp({ t: 1757059083, i: 1 }), t: Long('2') },
+      optimeDate: ISODate('2025-09-05T07:58:03.000Z'),
+      optimeDurableDate: ISODate('2025-09-05T07:58:03.000Z'),
+      optimeWrittenDate: ISODate('2025-09-05T07:58:03.000Z'),
+      lastAppliedWallTime: ISODate('2025-09-05T07:58:03.451Z'),
+      lastDurableWallTime: ISODate('2025-09-05T07:58:03.451Z'),
+      lastWrittenWallTime: ISODate('2025-09-05T07:58:03.451Z'),
+      lastHeartbeat: ISODate('2025-09-05T07:58:19.488Z'),
+      lastHeartbeatRecv: ISODate('2025-09-05T07:58:19.487Z'),
+      pingMs: Long('0'),
+      lastHeartbeatMessage: '',
+      syncSourceHost: 'mongo-db-1:27017',
+      syncSourceId: 0,
+      infoMessage: '',
+      configVersion: 12951,
+      configTerm: 2
+    }
+  ],
+  ok: 1,
+  '$clusterTime': {
+    clusterTime: Timestamp({ t: 1757059083, i: 1 }),
+    signature: {
+      hash: Binary.createFromBase64('AAAAAAAAAAAAAAAAAAAAAAAAAAA=', 0),
+      keyId: Long('0')
+    }
+  },
+  operationTime: Timestamp({ t: 1757059083, i: 1 })
+} -->
+---
+
+
+5. Once PRIMARY is Up, Create an Admin User
+
+- Right now, access control is disabled (Access control is not enabled for the database).
+- So after replica set is up:
+
+    use admin
+    db.createUser({
+    user: "admin",
+    pwd: "Admin123",
+    roles: [ { role: "root", db: "admin" } ]
+    })
+
+- check status if admin root user is x=created OK.
+    db.getUsers()
+
+
+
+- Then re-enable in /etc/mongod.conf
+---
+security:
+  authorization: enabled
+  keyFile: /etc/mongodb/keys/mongo-key
+---
+
+- Restart mongod on all 3 nodes:
+    sudo systemctl restart mongod
+
+
+6. Use below Cnnection String to connect in primary server:
+    mongosh "mongodb://admin:Admin123@mongo-db-1:27017,mongo-db-2:27017,mongo-db-3:27017/?replicaSet=rs0&authSource=admin"
